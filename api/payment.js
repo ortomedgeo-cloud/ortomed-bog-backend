@@ -1,8 +1,20 @@
 // api/payment.js
 import { randomUUID } from 'crypto';
 
+export const config = {
+  api: { bodyParser: false }, // отключаем авто-парсер Next.js
+};
+
 const OAUTH_URL = 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token';
 const CREATE_ORDER_URL = 'https://api.bog.ge/payments/v1/ecommerce/orders';
+
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch { return {}; }
+}
 
 export default async function handler(req, res) {
   // --- CORS / preflight ---
@@ -19,21 +31,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    // --- Разбор тела запроса ---
-    let body = req.body;
-    if (typeof body === 'string') {
-      try { body = JSON.parse(body || '{}'); } catch { body = {}; }
-    }
+    // --- Разбор тела запроса (теперь всегда безопасно) ---
+    const body = await readJsonBody(req);
 
     const amount = Number(body.amount ?? 1);
     const description = body.description || 'Оплата услуг';
     const product_id = body.product_id || 'posture_diagnostics_online';
 
-    // --- Язык из Accept-Language (по умолчанию ka) ---
+    // Язык из Accept-Language (по умолчанию ka)
     const rawLang = String(req.headers['accept-language'] || '').toLowerCase();
     const lang = rawLang.includes('en') ? 'en' : (rawLang.includes('ru') ? 'ru' : 'ka');
 
-    // --- OAuth: получаем токен (x-www-form-urlencoded!) ---
+    // --- OAuth: получаем токен (x-www-form-urlencoded) ---
     const basic = Buffer
       .from(`${process.env.BOG_CLIENT_ID}:${process.env.BOG_CLIENT_SECRET}`)
       .toString('base64');
@@ -92,17 +101,14 @@ export default async function handler(req, res) {
       body: JSON.stringify(orderBody),
     });
 
-    // Иногда BOG отдаёт не-JSON при ошибках, поэтому сначала читаем как text
+    // иногда BOG возвращает текст при ошибке — читаем как text и пытаемся распарсить
     const raw = await orderResp.text();
     let orderData;
     try { orderData = JSON.parse(raw); } catch { orderData = { raw }; }
 
     if (!orderResp.ok) {
       console.error('BOG create-order failed:', orderResp.status, orderData);
-      return res.status(orderResp.status || 400).json({
-        step: 'create-order',
-        bog: orderData,
-      });
+      return res.status(orderResp.status || 400).json({ step: 'create-order', bog: orderData });
     }
 
     const redirect =
@@ -114,7 +120,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Redirect URL missing', orderData });
     }
 
-    // --- Ответ фронту / Тильде ---
     return res.status(200).json({
       payment_url: redirect,
       redirect_url: redirect,
