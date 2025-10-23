@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 // api/payment.js
 // Создать заказ в BOG и вернуть ссылку на оплату
 
@@ -81,11 +82,18 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         'Accept-Language': lang,
-        'Idempotency-Key': (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`)
+        'Idempotency-Key': randomUUID(),
       },
       body: JSON.stringify(orderBody)
     });
+    const raw = await orderResp.text();
+let orderData;
+try { orderData = JSON.parse(raw); } catch { orderData = { raw }; }
 
+if (!orderResp.ok) {
+  console.error('BOG create-order failed:', orderResp.status, orderData);
+  return res.status(orderResp.status).json({ step: 'create-order', bog: orderData });
+}
     const orderData = await orderResp.json();
     if (!orderResp.ok) {
       return res.status(400).json({ step: 'create-order', orderData });
