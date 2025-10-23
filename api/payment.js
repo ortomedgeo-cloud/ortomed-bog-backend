@@ -1,6 +1,5 @@
-import { randomUUID } from 'crypto';
 // api/payment.js
-// Создать заказ в BOG и вернуть ссылку на оплату
+import { randomUUID } from 'crypto';
 
 const OAUTH_URL = 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token';
 const CREATE_ORDER_URL = 'https://api.bog.ge/payments/v1/ecommerce/orders';
@@ -10,7 +9,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept-Language');
     return res.status(200).end();
   }
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -25,15 +24,16 @@ export default async function handler(req, res) {
     if (typeof body === 'string') {
       try { body = JSON.parse(body || '{}'); } catch { body = {}; }
     }
+
     const amount = Number(body.amount ?? 1);
     const description = body.description || 'Оплата услуг';
     const product_id = body.product_id || 'posture_diagnostics_online';
 
-    // Язык из Accept-Language (по умолчанию ka)
+    // --- Язык из Accept-Language (по умолчанию ka) ---
     const rawLang = String(req.headers['accept-language'] || '').toLowerCase();
-    const lang = (rawLang.includes('en') ? 'en' : (rawLang.includes('ru') ? 'ru' : 'ka'));
+    const lang = rawLang.includes('en') ? 'en' : (rawLang.includes('ru') ? 'ru' : 'ka');
 
-    // --- OAuth: получаем токен ---
+    // --- OAuth: получаем токен (x-www-form-urlencoded!) ---
     const basic = Buffer
       .from(`${process.env.BOG_CLIENT_ID}:${process.env.BOG_CLIENT_SECRET}`)
       .toString('base64');
@@ -42,83 +42,85 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${basic}`
+        'Authorization': `Basic ${basic}`,
       },
-      body: new URLSearchParams({ grant_type: 'client_credentials' })
+      body: new URLSearchParams({ grant_type: 'client_credentials' }),
     });
 
-    const tokenData = await tokenResp.json();
+    const tokenData = await tokenResp.json().catch(() => ({}));
     const accessToken = tokenData?.access_token;
 
     if (!tokenResp.ok || !accessToken) {
       return res.status(500).json({ error: 'Failed to get token', details: tokenData });
     }
 
-    // --- Создаём заказ ---
-    const callbackUrl = process.env.CALLBACK_URL ||
+    // --- Создаём заказ (JSON) ---
+    const callbackUrl =
+      process.env.CALLBACK_URL ||
       `${process.env.PUBLIC_BASE_URL || ''}/api/callback`;
 
     const orderBody = {
       callback_url: callbackUrl || '',
       redirect_urls: {
         success: process.env.SUCCESS_URL,
-        fail: process.env.FAIL_URL
+        fail: process.env.FAIL_URL,
       },
       purchase_units: [
-      {
-        currency: 'GEL',
-        total_amount: Number.isFinite(amount) ? amount : 1,
-       basket: [
-  {
-    quantity: 1,
-    unit_price: Number.isFinite(amount) ? amount : 1,
-    product_id,
-    description,
-  }
-],
+        {
+          currency: 'GEL',
+          total_amount: Number.isFinite(amount) ? amount : 1,
+          basket: [
+            {
+              quantity: 1,
+              unit_price: Number.isFinite(amount) ? amount : 1,
+              product_id,
+              description,
+            },
+          ],
+        },
+      ],
+    };
+
+    const orderResp = await fetch(CREATE_ORDER_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept-Language': lang,
+        'Idempotency-Key': randomUUID(),
       },
-    ],
-  };  
-const orderResp = await fetch(CREATE_ORDER_URL, {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
-    'Accept-Language': lang,
-    'Idempotency-Key': randomUUID(),
-  },
-  body: JSON.stringify(orderBody),
-});
+      body: JSON.stringify(orderBody),
+    });
 
-const raw = await orderResp.text();
-let orderData;
-try {
-  orderData = JSON.parse(raw);
-} catch {
-  orderData = { raw };
-}
+    // Иногда BOG отдаёт не-JSON при ошибках, поэтому сначала читаем как text
+    const raw = await orderResp.text();
+    let orderData;
+    try { orderData = JSON.parse(raw); } catch { orderData = { raw }; }
 
-if (!orderResp.ok) {
-  console.error('BOG create-order failed:', orderResp.status, orderData);
-  return res.status(orderResp.status).json({ step: 'create-order', bog: orderData });
-}
+    if (!orderResp.ok) {
+      console.error('BOG create-order failed:', orderResp.status, orderData);
+      return res.status(orderResp.status || 400).json({
+        step: 'create-order',
+        bog: orderData,
+      });
+    }
 
-// если код дошёл сюда — всё ок, возвращаем orderData клиенту
-return res.status(200).json(orderData);
+    const redirect =
+      orderData?._links?.redirect?.href ||
+      orderData?.redirect_url ||
+      null;
 
-
-    const redirect = orderData?._links?.redirect?.href || orderData?.redirect_url || null;
     if (!redirect) {
       return res.status(400).json({ error: 'Redirect URL missing', orderData });
     }
 
-    // --- Ответ фронту / Tilda ---
+    // --- Ответ фронту / Тильде ---
     return res.status(200).json({
       payment_url: redirect,
       redirect_url: redirect,
       order_id: orderData.id,
       status: orderData.status || 'created',
-      lang
+      lang,
     });
 
   } catch (e) {
