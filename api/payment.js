@@ -58,6 +58,7 @@ export default async function handler(req, res) {
     const orderBody = {
       callback_url: `${process.env.PUBLIC_BASE_URL}/api/bog/callback`, // можно пока не создавать, банку важен 200 OK
       external_order_id: `posture-${Date.now()}`,
+      language: (req.headers["accept-language"] === "ka" ? "ka" : "en"),
       purchase_units: {
         currency: "GEL",
         total_amount: Number(amount),
