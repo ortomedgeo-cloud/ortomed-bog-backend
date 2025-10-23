@@ -75,29 +75,33 @@ export default async function handler(req, res) {
         }]
       }
     };
+const orderResp = await fetch(CREATE_ORDER_URL, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+    'Accept-Language': lang,
+    'Idempotency-Key': randomUUID(),
+  },
+  body: JSON.stringify(orderBody),
+});
 
-    const orderResp = await fetch(CREATE_ORDER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'Accept-Language': lang,
-        'Idempotency-Key': randomUUID(),
-      },
-      body: JSON.stringify(orderBody)
-    });
-    const raw = await orderResp.text();
+const raw = await orderResp.text();
 let orderData;
-try { orderData = JSON.parse(raw); } catch { orderData = { raw }; }
+try {
+  orderData = JSON.parse(raw);
+} catch {
+  orderData = { raw };
+}
 
 if (!orderResp.ok) {
   console.error('BOG create-order failed:', orderResp.status, orderData);
   return res.status(orderResp.status).json({ step: 'create-order', bog: orderData });
 }
-    const orderData = await orderResp.json();
-    if (!orderResp.ok) {
-      return res.status(400).json({ step: 'create-order', orderData });
-    }
+
+// если код дошёл сюда — всё ок, возвращаем orderData клиенту
+return res.status(200).json(orderData);
+
 
     const redirect = orderData?._links?.redirect?.href || orderData?.redirect_url || null;
     if (!redirect) {
