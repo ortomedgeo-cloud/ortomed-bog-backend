@@ -59,7 +59,7 @@ export default async function handler(req, res) {
     } catch {}
 
     const {
-      amount = 69.0,
+      amount = 1.0,
       description = "онлайн-диагностика осанки",
       product_id = "posture_diagnostics_online",
       language: languageFromBody, // необязательное поле
