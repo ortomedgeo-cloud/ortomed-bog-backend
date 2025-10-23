@@ -1,9 +1,7 @@
 // /api/payment.js
 // Создаёт заказ в BOG и возвращает ссылку на оплату
-// Гарантируем Node.js runtime, а не Edge
 export const config = { runtime: 'nodejs' };
 
-// Простенький генератор idempotency-key
 function uuidv4() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -13,9 +11,7 @@ function uuidv4() {
 }
 
 async function getAccessToken() {
-  // OAuth-эндпоинт BOG
-  const OAUTH_URL =
-    'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token';
+  const OAUTH_URL = 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token';
 
   const basic = Buffer.from(
     ${process.env.BOG_CLIENT_ID}:${process.env.BOG_CLIENT_SECRET}
@@ -31,24 +27,21 @@ async function getAccessToken() {
   });
 
   const data = await resp.json();
-  if (!resp.ok) {
-    throw new Error(OAuth error: ${resp.status} ${JSON.stringify(data)});
-  }
+  if (!resp.ok) throw new Error(OAuth error: ${resp.status} ${JSON.stringify(data)});
   return data.access_token;
 }
 
 export default async function handler(req, res) {
-  // Разрешим CORS на всякий случай
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Accept-Language,x-language');
   if (req.method === 'OPTIONS') return res.status(204).end();
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // --- Разбираем входные данные ---
     let body = {};
     try {
       body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
@@ -58,20 +51,14 @@ export default async function handler(req, res) {
       amount = 69.0,
       description = 'онлайн-диагностика осанки',
       product_id = 'posture_diagnostics_online',
-      language: languageFromBody, // необязательное поле
+      language: languageFromBody,
     } = body;
 
-    // Язык: приоритет — заголовок, затем body, по умолчанию "ka"
-    const fromHeader =
-      (req.headers['x-language'] || req.headers['accept-language'] || '')
-        .toString()
-        .toLowerCase();
+    const fromHeader = (req.headers['x-language'] || req.headers['accept-language'] || '').toString().toLowerCase();
     let lang = (languageFromBody || fromHeader || 'ka').slice(0, 2);
-    if (!['ka', 'en'].includes(lang)) lang = 'ka'; // банк принимает только ka или en
+    if (!['ka', 'en'].includes(lang)) lang = 'ka';
 
     const accessToken = await getAccessToken();
-
-    // --- Создание заказа ---
     const CREATE_ORDER_URL = 'https://api.bog.ge/payments/v1/ecommerce/orders';
 
     const orderBody = {
@@ -101,12 +88,12 @@ export default async function handler(req, res) {
     });
 
     const orderData = await orderResp.json();
+
     if (!orderResp.ok) {
       return res.status(400).json({ step: 'create-order', orderData });
     }
 
-    const redirect =
-      orderData?._links?.redirect?.href || orderData?.redirect_url || null;
+    const redirect = orderData?._links?.redirect?.href || orderData?.redirect_url || null;
 
     return res.status(200).json({
       order_id: orderData.id,
