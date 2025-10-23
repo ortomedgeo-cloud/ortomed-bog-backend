@@ -120,13 +120,13 @@ const orderBody = {
       return res.status(400).json({ error: 'Redirect URL missing', orderData });
     }
 
-    return res.status(200).json({
+    return res.status(303).json({
       payment_url: redirect,
       redirect_url: redirect,
       order_id: orderData.id,
       status: orderData.status || 'created',
       lang,
-    });
+    }).setHeader('Location', redirect);
 
   } catch (e) {
     console.error('Payment error:', e);
