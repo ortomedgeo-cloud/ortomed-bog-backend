@@ -29,19 +29,17 @@ export default async function handler(req, res) {
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Expose-Headers', 'Location')
 
-  if (req.method !== 'POST') {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     const body = await readJsonBody(req);
-    const amountRaw = Number(body.amount ?? 1);
-    const description = body.description || 'Оплата услуг';
+    const amount = Number(body.amount ?? 1);
+    const price = 1;
     const product_id = body.product_id || 'posture_diagnostics_online';
-
-    const amt = Number.isFinite(amountRaw) && amountRaw > 0 ? amountRaw : 1;
-    const amountStr = amt.toFixed(2);
 
     const rawLang = String(req.headers['accept-language'] || '').toLowerCase();
     const lang = rawLang.includes('en')
@@ -51,14 +49,14 @@ export default async function handler(req, res) {
       : 'ka';
 
     const basic = Buffer.from(
-      ${process.env.BOG_CLIENT_ID}:${process.env.BOG_CLIENT_SECRET}
+      `${process.env.BOG_CLIENT_ID}:${process.env.BOG_CLIENT_SECRET}`
     ).toString('base64');
 
     const tokenResp = await fetch(OAUTH_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: Basic ${basic},
+        'Authorization': `Basic ${basic}`,
       },
       body: new URLSearchParams({ grant_type: 'client_credentials' }),
     });
@@ -76,36 +74,33 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to get token', details: tokenData });
     }
 
-    const callbackUrl = process.env.CALLBACK_URL || '';
+    const callbackUrl = process.env.PUBLIC_BASE_URL + '/api/callback';
     const successUrl = process.env.SUCCESS_URL || 'https://www.ortomed-geo.com/success';
     const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/fail';
 
     const orderBody = {
-      callback_url: callbackUrl || undefined,
-      redirect_urls: {
-        success: successUrl,
-        fail: failUrl,
+      callback_url: 'https://example.com/callback',
+      // redirect_urls: {
+      //   success: successUrl,
+      //   fail: failUrl,
+      // },
+      purchase_units: {
+        currency: 'GEL',
+        total_amount: amount,
+        basket: [
+          {
+            quantity: 1,
+            unit_price: price,
+            product_id,
+          },
+        ],
       },
-      purchase_units: [
-        {
-          currency: 'GEL',
-          total_amount: amountStr,
-          basket: [
-            {
-              quantity: 1,
-              unit_price: amountStr,
-              product_id,
-              description,
-            },
-          ],
-        },
-      ],
     };
 
     const orderResp = await fetch(CREATE_ORDER_URL, {
       method: 'POST',
       headers: {
-        Authorization: Bearer ${accessToken},
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         'Accept-Language': lang,
         'Idempotency-Key': randomUUID(),
@@ -136,7 +131,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Redirect URL missing', orderData });
     }
 
-    return res.status(200).json({
+    return res.status(303).setHeader('Location', redirect).json({
       payment_url: redirect,
       redirect_url: redirect,
       order_id: orderData.id,
