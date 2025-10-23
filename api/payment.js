@@ -103,22 +103,36 @@ export default async function handler(req, res) {
       body: JSON.stringify(orderBody),
     });
 
-    const orderData = await orderResp.json();
+ // ...весь твой код выше...
+// авторизация, получение токена, создание заказа и т.д.
 
-    if (!orderResp.ok) {
-      return res.status(400).json({ step: "create-order", orderData });
-    }
+const orderData = await orderResp.json();
 
-    const redirect = orderData?._links?.redirect?.href || orderData?.redirect_url || null;
-
-    return res.status(200).json({
-      order_id: orderData.id,
-      status: orderData.status,
-      redirect_url: redirect,
-      lang,
-    });
-  } catch (e) {
-    console.error("Payment error:", e);
-    return res.status(500).json({ error: "Payment failed", detail: String(e) });
-  }
+// ⬇️ ВСТАВЛЯЕШЬ СЮДА вот этот блок (и после него — ничего больше)
+if (req.method === 'OPTIONS') {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  return res.status(200).end();
 }
+res.setHeader('Access-Control-Allow-Origin', '*');
+
+const redirect = orderData?._links?.redirect?.href || orderData?.redirect_url || null;
+
+if (!redirect) {
+  return res.status(400).json({ error: 'Redirect URL missing', orderData });
+}
+
+return res.status(200).json({
+  payment_url: redirect,
+  redirect_url: redirect,
+  order_id: orderData.id,
+  status: orderData.status || 'created'
+});
+
+// 👇 вот это — конец функции
+} catch (e) {
+  console.error("Payment error:", e);
+  return res.status(500).json({ error: "Payment failed", detail: String(e) });
+}
+
