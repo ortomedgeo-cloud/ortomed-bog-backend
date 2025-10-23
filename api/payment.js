@@ -1,6 +1,10 @@
 // /api/payment.js
 // Создаёт заказ в BOG и возвращает ссылку на оплату
-
+// Гарантируем Node.js runtime, а не Edge
+export const config = { runtime: 'nodejs' };
+if (!process.env.BOG_CLIENT_ID || !process.env.BOG_CLIENT_SECRET) {
+  console.error('Missing BOG env vars');
+}
 // Простенький генератор idempotency-key
 function uuidv4() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
