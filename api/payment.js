@@ -64,29 +64,32 @@ export default async function handler(req, res) {
     }
 
     // --- Создаём заказ (JSON) ---
- const callbackUrl = process.env.CALLBACK_URL || `${process.env.PUBLIC_BASE_URL || ''}/api/callback`;
+ // --- Создаём заказ (JSON) ---
+const callbackUrl =
+  process.env.CALLBACK_URL ||
+  ${process.env.PUBLIC_BASE_URL || ''}/api/callback;
 
+// ⬇ вот сюда вставляешь этот кусок:
+const amt = Number.isFinite(amount) ? Number(amount) : 1;
+const amountStr = amt.toFixed(2); // "10.00" строкой
+
+// и сразу после этого идёт:
 const orderBody = {
-  callback_url: callbackUrl || '',
-  redirect_urls: {
-    success: process.env.SUCCESS_URL,
-    fail: process.env.FAIL_URL,
-  },
   purchase_units: [
     {
       currency: 'GEL',
-      total_amount: Number.isFinite(amount) ? amount : 1,
-      basket: [{
-        quantity: 1,
-        unit_price: Number.isFinite(amount) ? amount : 1,
-        product_id,
-        description,
-      }],
-    },
-  ],
+      total_amount: amountStr,        // строкой "10.00"
+      basket: [
+        {
+          quantity: 1,                // число
+          unit_price: amountStr,      // строкой "10.00"
+          product_id: 'service001',   // короткий ASCII (без пробелов), до 20 симв.
+          description: description || 'Payment for ortomed-geo.com',
+        },
+      ],
+    },
+  ],
 };
-
-
     const orderResp = await fetch(CREATE_ORDER_URL, {
       method: 'POST',
       headers: {
