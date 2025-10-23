@@ -59,22 +59,26 @@ export default async function handler(req, res) {
       `${process.env.PUBLIC_BASE_URL || ''}/api/callback`;
 
     const orderBody = {
-      callback_url: callbackUrl || undefined,
+      callback_url: callbackUrl || '',
       redirect_urls: {
         success: process.env.SUCCESS_URL,
         fail: process.env.FAIL_URL
       },
-      purchase_units: {
+      purchase_units: [
+      {
         currency: 'GEL',
         total_amount: Number.isFinite(amount) ? amount : 1,
-        basket: [{
-          quantity: 1,
-          unit_price: Number.isFinite(amount) ? amount : 1,
-          product_id,
-          description
-        }]
-      }
-    };
+       basket: [
+  {
+    quantity: 1,
+    unit_price: Number.isFinite(amount) ? amount : 1,
+    product_id,
+    description,
+  }
+],
+      },
+    ],
+  };  
 const orderResp = await fetch(CREATE_ORDER_URL, {
   method: 'POST',
   headers: {
