@@ -1,138 +1,112 @@
-// /api/payment.js
-// Создаёт заказ в BOG и возвращает ссылку на оплату
-// Гарантируем Node.js runtime, а не Edge
-export const config = { runtime: 'nodejs' };
+// api/payment.js
+// Создать заказ в BOG и вернуть ссылку на оплату
 
-if (!process.env.BOG_CLIENT_ID || !process.env.BOG_CLIENT_SECRET) {
-  console.error('Missing BOG env vars');
-}
-
-// Простенький генератор idempotency-key
-function uuidv4() {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-async function getAccessToken() {
-  // OAuth-эндпоинт BOG
-  const OAUTH_URL = "https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token";
-
-  const basic = Buffer.from(
-    `${process.env.BOG_CLIENT_ID}:${process.env.BOG_CLIENT_SECRET}`
-  ).toString("base64");
-
-  const resp = await fetch(OAUTH_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Authorization": `Basic ${basic}`,
-    },
-    body: new URLSearchParams({ grant_type: "client_credentials" }),
-  });
-
-  const data = await resp.json();
-  if (!resp.ok) {
-    throw new Error(`OAuth error: ${resp.status} ${JSON.stringify(data)}`);
-  }
-  return data.access_token;
-}
+const OAUTH_URL = 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token';
+const CREATE_ORDER_URL = 'https://api.bog.ge/payments/v1/ecommerce/orders';
 
 export default async function handler(req, res) {
-  // Разрешим CORS на всякий случай
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Accept-Language,x-language");
-  if (req.method === "OPTIONS") return res.status(204).end();
+  // --- CORS / preflight ---
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(200).end();
+  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // --- Разбираем входные данные ---
-    let body = {};
-    try {
-      body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
-    } catch {}
+    // --- Разбор тела запроса ---
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body || '{}'); } catch { body = {}; }
+    }
+    const amount = Number(body.amount ?? 1);
+    const description = body.description || 'Оплата услуг';
+    const product_id = body.product_id || 'posture_diagnostics_online';
 
-    const {
-      amount = 1.0,
-      description = "онлайн-диагностика осанки",
-      product_id = "posture_diagnostics_online",
-      language: languageFromBody, // необязательное поле
-    } = body;
+    // Язык из Accept-Language (по умолчанию ka)
+    const rawLang = String(req.headers['accept-language'] || '').toLowerCase();
+    const lang = (rawLang.includes('en') ? 'en' : (rawLang.includes('ru') ? 'ru' : 'ka'));
 
-    // Язык берём в приоритете из заголовка, затем из body, по умолчанию — "ka"
-    const fromHeader =
-      (req.headers["x-language"] || req.headers["accept-language"] || "").toString().toLowerCase();
-    let lang = (languageFromBody || fromHeader || "ka").slice(0, 2);
-    if (!["ka", "en"].includes(lang)) lang = "ka"; // банк принимает только ka или en
+    // --- OAuth: получаем токен ---
+    const basic = Buffer
+      .from(`${process.env.BOG_CLIENT_ID}:${process.env.BOG_CLIENT_SECRET}`)
+      .toString('base64');
 
-    const accessToken = await getAccessToken();
+    const tokenResp = await fetch(OAUTH_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${basic}`
+      },
+      body: new URLSearchParams({ grant_type: 'client_credentials' })
+    });
 
-    // --- Создание заказа ---
-    const CREATE_ORDER_URL = "https://api.bog.ge/payments/v1/ecommerce/orders";
+    const tokenData = await tokenResp.json();
+    const accessToken = tokenData?.access_token;
+
+    if (!tokenResp.ok || !accessToken) {
+      return res.status(500).json({ error: 'Failed to get token', details: tokenData });
+    }
+
+    // --- Создаём заказ ---
+    const callbackUrl = process.env.CALLBACK_URL ||
+      `${process.env.PUBLIC_BASE_URL || ''}/api/callback`;
 
     const orderBody = {
-      callback_url: `${process.env.PUBLIC_BASE_URL}/api/bog/callback`,
-      external_order_id: `posture-${Date.now()}`,
-      purchase_units: {
-        currency: "GEL",
-        total_amount: Number(amount),
-        basket: [{ quantity: 1, unit_price: Number(amount), product_id, description }],
-      },
+      callback_url: callbackUrl || undefined,
       redirect_urls: {
         success: process.env.SUCCESS_URL,
-        fail: process.env.FAIL_URL,
+        fail: process.env.FAIL_URL
       },
+      purchase_units: {
+        currency: 'GEL',
+        total_amount: Number.isFinite(amount) ? amount : 1,
+        basket: [{
+          quantity: 1,
+          unit_price: Number.isFinite(amount) ? amount : 1,
+          product_id,
+          description
+        }]
+      }
     };
 
     const orderResp = await fetch(CREATE_ORDER_URL, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": uuidv4(),
-        // язык — и в x-language, и в Accept-Language
-        "x-language": lang,
-        "Accept-Language": lang,
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept-Language': lang,
+        'Idempotency-Key': (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`)
       },
-      body: JSON.stringify(orderBody),
+      body: JSON.stringify(orderBody)
     });
 
- // ...весь твой код выше...
-// авторизация, получение токена, создание заказа и т.д.
+    const orderData = await orderResp.json();
+    if (!orderResp.ok) {
+      return res.status(400).json({ step: 'create-order', orderData });
+    }
 
-const orderData = await orderResp.json();
+    const redirect = orderData?._links?.redirect?.href || orderData?.redirect_url || null;
+    if (!redirect) {
+      return res.status(400).json({ error: 'Redirect URL missing', orderData });
+    }
 
-// ⬇️ ВСТАВЛЯЕШЬ СЮДА вот этот блок (и после него — ничего больше)
-if (req.method === 'OPTIONS') {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  return res.status(200).end();
+    // --- Ответ фронту / Tilda ---
+    return res.status(200).json({
+      payment_url: redirect,
+      redirect_url: redirect,
+      order_id: orderData.id,
+      status: orderData.status || 'created',
+      lang
+    });
+
+  } catch (e) {
+    console.error('Payment error:', e);
+    return res.status(500).json({ error: 'Payment failed', detail: String(e) });
+  }
 }
-res.setHeader('Access-Control-Allow-Origin', '*');
-
-const redirect = orderData?._links?.redirect?.href || orderData?.redirect_url || null;
-
-if (!redirect) {
-  return res.status(400).json({ error: 'Redirect URL missing', orderData });
-}
-
-return res.status(200).json({
-  payment_url: redirect,
-  redirect_url: redirect,
-  order_id: orderData.id,
-  status: orderData.status || 'created'
-});
-
-// 👇 вот это — конец функции
-} catch (e) {
-  console.error("Payment error:", e);
-  return res.status(500).json({ error: "Payment failed", detail: String(e) });
-}
-
