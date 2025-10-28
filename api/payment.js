@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
   try {
     const body = await readJsonBody(req);
-    const amount = Number(body.amount ?? 1);
+    const amount = Number(body.amount ?? 49);
     const price = 49;
     const product_id = body.product_id || 'posture_diagnostics_online';
 
