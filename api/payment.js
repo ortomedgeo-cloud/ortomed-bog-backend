@@ -49,7 +49,7 @@ export default async function handler(req, res) {
     switch (name) {
       case Service.OSANKA:
         product_id = Service.OSANKA;
-        amount = 99;
+        amount = 100;
         break;
       case Service.POSTURE_DIAGNOSTICS:
         product_id = Service.POSTURE_DIAGNOSTICS
