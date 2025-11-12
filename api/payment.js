@@ -8,6 +8,11 @@ export const config = {
 const OAUTH_URL = 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token';
 const CREATE_ORDER_URL = 'https://api.bog.ge/payments/v1/ecommerce/orders';
 
+const Service = {
+  POSTURE_DIAGNOSTICS: 'POSTURE_DIAGNOSTICS',
+  OSANKA: 'OSANKA',
+};
+
 async function readJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -36,10 +41,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = await readJsonBody(req);
-    const amount = Number(body.amount ?? 49);
-    const price = 49;
-    const product_id = body.product_id || 'posture_diagnostics_online';
+    let amount, product_id;
+
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const name = url.searchParams.get('service');
+
+    switch (name) {
+      case Service.OSANKA:
+        product_id = Service.OSANKA;
+        amount = 99;
+        break;
+      case Service.POSTURE_DIAGNOSTICS:
+        product_id = Service.POSTURE_DIAGNOSTICS
+        amount = 49;
+        break;
+      default:
+        return res.status(400).json({ error: 'Invalid service' });
+    }
+
+    const price = amount;
+
+    // const body = await readJsonBody(req);
 
     const rawLang = String(req.headers['accept-language'] || '').toLowerCase();
     const lang = rawLang.includes('en')
@@ -74,9 +96,9 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to get token', details: tokenData });
     }
 
-    const callbackUrl = process.env.PUBLIC_BASE_URL + '/api/callback';
-    const successUrl = process.env.SUCCESS_URL || 'https://www.ortomed-geo.com/success';
-    const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/fail';
+    // const callbackUrl = process.env.PUBLIC_BASE_URL + '/api/callback';
+    // const successUrl = process.env.SUCCESS_URL || 'https://www.ortomed-geo.com/success';
+    // const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/fail';
 
     const orderBody = {
       callback_url: 'https://example.com/callback',
