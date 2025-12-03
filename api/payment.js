@@ -21,13 +21,13 @@ const Service = {
 
 const SUCCESS_URLS = {
   [Service.ZDOROVAYA_OSANKA_STOPY]: 'https://ortomed-geo.com/members/signup/group/l0tndutrrmtintu-zdorovaa-osanka-i-stopy',
-  [Service.ANTIVALGUS]:               'https://ortomed-geo.com/members/signup/group/ste0q2t0neqvqxj-antivalgus',
-  [Service.ANTISUTULOST]:             'https://ortomed-geo.com/members/signup/group/szljcghwsda1net-antisutulost',
-  [Service.NORMAL_OSANKA]:            'https://ortomed-geo.com/members/signup/group/sjm5s1q2znpqwnj-normalnaa-osanka',
-  [Service.SUTULAYA]:                 'https://ortomed-geo.com/members/signup/group/yk1tcxprtxllr0s-sutulaa-kruglaa-osanka',
-  [Service.PLOSKAYA]:                 'https://ortomed-geo.com/members/signup/group/qxaxbum0rhcydnf-ploskaa-osanka',
-  [Service.KRUGLO_VOGNUTAYA]:         'https://ortomed-geo.com/members/signup/group/evfamzjjl1vdsyt-kruglovognutaa-osanka',
-  [Service.PLOSKO_VOGNUTAYA]:         'https://ortomed-geo.com/members/signup/group/ehvtn1vmuwtqdge-ploskovognutaa-osanka',
+  [Service.ANTIVALGUS]:             'https://ortomed-geo.com/members/signup/group/ste0q2t0neqvqxj-antivalgus',
+  [Service.ANTISUTULOST]:           'https://ortomed-geo.com/members/signup/group/szljcghwsda1net-antisutulost',
+  [Service.NORMAL_OSANKA]:          'https://ortomed-geo.com/members/signup/group/sjm5s1q2znpqwnj-normalnaa-osanka',
+  [Service.SUTULAYA]:               'https://ortomed-geo.com/members/signup/group/yk1tcxprtxllr0s-sutulaa-kruglaa-osanka',
+  [Service.PLOSKAYA]:               'https://ortomed-geo.com/members/signup/group/qxaxbum0rhcydnf-ploskaa-osanka',
+  [Service.KRUGLO_VOGNUTAYA]:       'https://ortomed-geo.com/members/signup/group/evfamzjjl1vdsyt-kruglovognutaa-osanka',
+  [Service.PLOSKO_VOGNUTAYA]:       'https://ortomed-geo.com/members/signup/group/ehvtn1vmuwtqdge-ploskovognutaa-osanka',
 };
 
 async function readJsonBody(req) {
@@ -51,14 +51,14 @@ export default async function handler(req, res) {
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Expose-Headers', 'Location')
+  res.setHeader('Access-Control-Expose-Headers', 'Location');
 
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    let amount, product_id; successUrl;
+    let amount, product_id, successUrl;
 
     const url = new URL(req.url, `http://${req.headers.host}`);
     const name = url.searchParams.get('service');
@@ -95,20 +95,18 @@ export default async function handler(req, res) {
       case Service.PLOSKO_VOGNUTAYA:
         product_id = Service.PLOSKO_VOGNUTAYA;
         amount = 1;
-        break;  
+        break;
       default:
         return res.status(400).json({ error: 'Invalid service' });
     }
-    
+
     successUrl = SUCCESS_URLS[name];
-if (!successUrl) {
-  return res.status(500).json({ error: 'Success URL not configured for this service' });
-}
+    if (!successUrl) {
+      return res.status(500).json({ error: 'Success URL not configured for this service' });
+    }
 
-const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/payment-fail';
+    const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/payment-fail';
     const price = amount;
-
-    // const body = await readJsonBody(req);
 
     const rawLang = String(req.headers['accept-language'] || '').toLowerCase();
     const lang = rawLang.includes('en')
@@ -143,29 +141,24 @@ const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/payment-fai
       return res.status(500).json({ error: 'Failed to get token', details: tokenData });
     }
 
-    // const callbackUrl = process.env.PUBLIC_BASE_URL + '/api/callback';
-    // const successUrl = process.env.SUCCESS_URL || 'https://www.ortomed-geo.com/success';
-    // const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/fail';
-
     const orderBody = {
-  callback_url: process.env.BOG_CALLBACK_URL || 'https://www.ortomed-geo.com/bog-callback',
-  redirect_urls: {
-    success: successUrl,
-    fail: failUrl,
-  },
-  purchase_units: {
-    currency: 'GEL',
-    total_amount: amount,
-    basket: [
-      {
-        quantity: 1,
-        unit_price: price,
-        product_id,
+      callback_url: process.env.BOG_CALLBACK_URL || 'https://www.ortomed-geo.com/bog-callback',
+      redirect_urls: {
+        success: successUrl,
+        fail: failUrl,
       },
-    ],
-  },
-};
-
+      purchase_units: {
+        currency: 'GEL',
+        total_amount: amount,
+        basket: [
+          {
+            quantity: 1,
+            unit_price: price,
+            product_id,
+          },
+        ],
+      },
+    };
 
     const orderResp = await fetch(CREATE_ORDER_URL, {
       method: 'POST',
@@ -213,3 +206,4 @@ const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/payment-fai
     return res.status(500).json({ error: 'Payment failed', detail: String(e) });
   }
 }
+
