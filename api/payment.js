@@ -58,7 +58,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    let amount, product_id;
+    let amount, product_id; successUrl;
 
     const url = new URL(req.url, `http://${req.headers.host}`);
     const name = url.searchParams.get('service');
@@ -148,23 +148,24 @@ const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/payment-fai
     // const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/fail';
 
     const orderBody = {
-      callback_url: process.env.BOG_CALLBACK_URL || 'https://www.ortomed-geo.com/bog-callback',
-      // redirect_urls: {
-      //   success: successUrl,
-      //   fail: failUrl,
-      // },
-      purchase_units: {
-        currency: 'GEL',
-        total_amount: amount,
-        basket: [
-          {
-            quantity: 1,
-            unit_price: price,
-            product_id,
-          },
-        ],
+  callback_url: process.env.BOG_CALLBACK_URL || 'https://www.ortomed-geo.com/bog-callback',
+  redirect_urls: {
+    success: successUrl,
+    fail: failUrl,
+  },
+  purchase_units: {
+    currency: 'GEL',
+    total_amount: amount,
+    basket: [
+      {
+        quantity: 1,
+        unit_price: price,
+        product_id,
       },
-    };
+    ],
+  },
+};
+
 
     const orderResp = await fetch(CREATE_ORDER_URL, {
       method: 'POST',
