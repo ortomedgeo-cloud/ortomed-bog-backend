@@ -9,8 +9,25 @@ const OAUTH_URL = 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect
 const CREATE_ORDER_URL = 'https://api.bog.ge/payments/v1/ecommerce/orders';
 
 const Service = {
-  POSTURE_DIAGNOSTICS: 'POSTURE_DIAGNOSTICS',
-  OSANKA: 'OSANKA',
+  ZDOROVAYA_OSANKA_STOPY: 'ZDOROVAYA_OSANKA_STOPY',
+  ANTIVALGUS: 'ANTIVALGUS',
+  ANTISUTULOST: 'ANTISUTULOST',
+  NORMAL_OSANKA: 'NORMAL_OSANKA',
+  SUTULAYA: 'SUTULAYA',
+  PLOSKAYA: 'PLOSKAYA',
+  KRUGLO_VOGNUTAYA: 'KRUGLO_VOGNUTAYA',
+  PLOSKO_VOGNUTAYA: 'PLOSKO_VOGNUTAYA',
+};
+
+const SUCCESS_URLS = {
+  [Service.ZDOROVAYA_OSANKA_STOPY]: 'https://ortomed-geo.com/members/signup/group/l0tndutrrmtintu-zdorovaa-osanka-i-stopy',
+  [Service.ANTIVALGUS]:               'https://ortomed-geo.com/members/signup/group/ste0q2t0neqvqxj-antivalgus',
+  [Service.ANTISUTULOST]:             'https://ortomed-geo.com/members/signup/group/szljcghwsda1net-antisutulost',
+  [Service.NORMAL_OSANKA]:            'https://ortomed-geo.com/members/signup/group/sjm5s1q2znpqwnj-normalnaa-osanka',
+  [Service.SUTULAYA]:                 'https://ortomed-geo.com/members/signup/group/yk1tcxprtxllr0s-sutulaa-kruglaa-osanka',
+  [Service.PLOSKAYA]:                 'https://ortomed-geo.com/members/signup/group/qxaxbum0rhcydnf-ploskaa-osanka',
+  [Service.KRUGLO_VOGNUTAYA]:         'https://ortomed-geo.com/members/signup/group/evfamzjjl1vdsyt-kruglovognutaa-osanka',
+  [Service.PLOSKO_VOGNUTAYA]:         'https://ortomed-geo.com/members/signup/group/ehvtn1vmuwtqdge-ploskovognutaa-osanka',
 };
 
 async function readJsonBody(req) {
@@ -47,18 +64,48 @@ export default async function handler(req, res) {
     const name = url.searchParams.get('service');
 
     switch (name) {
-      case Service.OSANKA:
-        product_id = Service.OSANKA;
-        amount = 100;
+      case Service.ZDOROVAYA_OSANKA_STOPY:
+        product_id = Service.ZDOROVAYA_OSANKA_STOPY;
+        amount = 1;
         break;
-      case Service.POSTURE_DIAGNOSTICS:
-        product_id = Service.POSTURE_DIAGNOSTICS
-        amount = 49;
+      case Service.ANTIVALGUS:
+        product_id = Service.ANTIVALGUS;
+        amount = 1;
         break;
+      case Service.ANTISUTULOST:
+        product_id = Service.ANTISUTULOST;
+        amount = 1;
+        break;
+      case Service.NORMAL_OSANKA:
+        product_id = Service.NORMAL_OSANKA;
+        amount = 1;
+        break;
+      case Service.SUTULAYA:
+        product_id = Service.SUTULAYA;
+        amount = 1;
+        break;
+      case Service.PLOSKAYA:
+        product_id = Service.PLOSKAYA;
+        amount = 1;
+        break;
+      case Service.KRUGLO_VOGNUTAYA:
+        product_id = Service.KRUGLO_VOGNUTAYA;
+        amount = 1;
+        break;
+      case Service.PLOSKO_VOGNUTAYA:
+        product_id = Service.PLOSKO_VOGNUTAYA;
+        amount = 1;
+        break;  
       default:
         return res.status(400).json({ error: 'Invalid service' });
     }
+    
+    successUrl = SUCCESS_URLS[name];
+if (!successUrl) {
+  return res.status(500).json({ error: 'Success URL not configured for this service' });
+}
 
+const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/payment-fail';
     const price = amount;
 
     // const body = await readJsonBody(req);
@@ -101,7 +148,7 @@ export default async function handler(req, res) {
     // const failUrl = process.env.FAIL_URL || 'https://www.ortomed-geo.com/fail';
 
     const orderBody = {
-      callback_url: 'https://example.com/callback',
+      callback_url: process.env.BOG_CALLBACK_URL || 'https://www.ortomed-geo.com/bog-callback',
       // redirect_urls: {
       //   success: successUrl,
       //   fail: failUrl,
