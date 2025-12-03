@@ -70,7 +70,7 @@ export default async function handler(req, res) {
         break;
       case Service.ANTIVALGUS:
         product_id = Service.ANTIVALGUS;
-        amount = 1;
+        amount = 10;
         break;
       case Service.ANTISUTULOST:
         product_id = Service.ANTISUTULOST;
